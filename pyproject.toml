@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=77.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tv-pulse"
+version = "0.1.0"
+description = "Pet-project for TV pulse data tracking"
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Alina Kuiumchan"},]
+keywords = ["pet-project", "first", "data"]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Natural Language :: English",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+dependencies = [
+    "requests>=2.31.0",
+    "pandas>=2.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.3.0",
+    "mypy>=1.9.0",
+    "pytest-cov>=4.1.0",
+    "pre-commit>=3.6.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 99
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W", "B", "A", "C4", "T10", "EXE", "ISC", "G",
+    "PIE", "T20", "PT", "RSE", "RET", "TID", "ARG", "PGH",
+    "PLC", "PLE", "PLW", "RUF",
+    "I",
+    "UP",
+]
+
+ignore = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers --cov=src/tv_pulse --cov-report=term-missing"
+
+markers = [
+    "slow: lower-importance tests that take an excessive amount of time",
+]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+files = "src/tv_pulse"
