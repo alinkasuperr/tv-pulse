@@ -11,7 +11,7 @@ requires-python = ">=3.13"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{name = "Alina Kuiumchan"},]
-keywords = ["pet-project", "first", "data"]
+keywords = ["data-engineering", "etl", "tvmaze", "python"]
 
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -28,17 +28,17 @@ classifiers = [
 ]
 
 dependencies = [
-    "requests>=2.31.0",
-    "pandas>=2.2.0",
+    "requests>=2.34",
+    "pandas>=3.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
-    "ruff>=0.3.0",
-    "mypy>=1.9.0",
-    "pytest-cov>=4.1.0",
-    "pre-commit>=3.6.0",
+    "pytest>=9.1",
+    "ruff>=0.17",
+    "mypy>=2.4",
+    "pytest-cov>=7.1",
+    "pre-commit>=4.7",
 ]
 
 [tool.setuptools.packages.find]
