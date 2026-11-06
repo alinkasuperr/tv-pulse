@@ -71,6 +71,8 @@ def build_shows(raw: list[dict[str, Any]]) -> pd.DataFrame:
     )
 
     shows["updated_at"] = pd.to_datetime(shows["updated_at"], unit="s", errors="coerce")
+    shows["updated_at"] = shows["updated_at"].astype("datetime64[us]")
+
     logger.info("Finish building shows: %s", shows.shape)
 
     return shows
@@ -99,6 +101,9 @@ def validate_silver(shows: pd.DataFrame, show_genre: pd.DataFrame, expected_rows
         show_genre.shape,
         expected_rows,
     )
+
+    if not shows.columns.is_unique:
+        raise ValueError("DataFrame columns are not unique (duplicates found)")
     if not shows["show_id"].is_unique:
         raise ValueError("ID show non unique")
     if expected_rows != len(shows):
@@ -111,8 +116,6 @@ def validate_silver(shows: pd.DataFrame, show_genre: pd.DataFrame, expected_rows
         raise ValueError("Duplicate show-genre pairs found")
     if not show_genre["show_id"].isin(shows["show_id"]).all():
         raise ValueError("Show genre contains show_id values missing from shows")
-    if not shows.columns.is_unique:
-        raise ValueError("DataFrame columns are not unique (duplicates found)")
 
     logger.info("Finish validating silver shows: %s", shows.shape)
 
