@@ -30,6 +30,7 @@ classifiers = [
 dependencies = [
     "requests>=2.34",
     "pandas>=3.0",
+    "pyarrow>=26.0",
 ]
 
 [project.optional-dependencies]
