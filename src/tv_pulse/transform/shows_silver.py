@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -132,6 +133,19 @@ def write_silver(shows: pd.DataFrame, show_genre: pd.DataFrame, silver_root: Pat
     show_genre.to_parquet(silver_root / "show_genre.parquet", engine="pyarrow")
 
     logger.info("Finish writing silver shows")
+
+
+def parse_ingested_at(path: Path) -> date:
+    file_name = path.stem
+    if not file_name.startswith("ingested_at="):
+        raise ValueError(f"Incorrect file name: {file_name}")
+
+    date_str = file_name.removeprefix("ingested_at=")
+
+    try:
+        return date.fromisoformat(date_str)
+    except ValueError as err:
+        raise ValueError(f"Incorrect date format in file name: {file_name}") from err
 
 
 def main() -> None:
