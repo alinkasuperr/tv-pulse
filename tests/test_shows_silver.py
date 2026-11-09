@@ -74,7 +74,7 @@ RAW_SHOWS = [
 
 @pytest.fixture
 def shows() -> pd.DataFrame:
-    return build_shows(RAW_SHOWS)
+    return build_shows(RAW_SHOWS, date(2026, 10, 28))
 
 
 def test_build_shows_keeps_all_rows(shows: pd.DataFrame) -> None:
@@ -109,6 +109,19 @@ def test_build_shows_converts_timestamp_correctly(shows: pd.DataFrame) -> None:
     actual_time = shows.loc[shows["show_id"] == 1, "updated_at"].item()
     expected_time = pd.Timestamp("2023-11-14 22:13:20")
     assert actual_time == expected_time
+
+
+def test_build_shows_includes_ingested_at(shows: pd.DataFrame) -> None:
+    assert "ingested_at" in shows.columns
+
+    expected_timestamp = pd.Timestamp("2026-10-28")
+    assert (shows["ingested_at"] == expected_timestamp).all()
+    assert pd.api.types.is_datetime64_any_dtype(shows["ingested_at"])
+
+
+def test_build_shows_all_data_the_same(shows: pd.DataFrame) -> None:
+    cols = ["premiered", "ended", "updated_at", "ingested_at"]
+    assert shows[cols].dtypes.nunique() == 1
 
 
 @pytest.fixture
@@ -191,12 +204,17 @@ def test_validate_silver_invalid_show_id_in_genre(
             lambda s, g: (s.rename(columns={"url": "name"}), g),
             "columns are not unique",
         ),
+        (
+            lambda s, g: (s.assign(ingested_at=s["ingested_at"].mask(s.index == 0, None)), g),
+            "ingested_at",
+        ),
     ],
     ids=[
         "missing_name",
         "rating_out_of_range",
         "duplicate_genre_pair",
         "duplicate_columns",
+        "missing_ingested_at",
     ],
 )
 def test_validate_silver_validation_errors(
