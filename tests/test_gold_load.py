@@ -1,5 +1,4 @@
 import sqlite3
-from collections.abc import Iterator
 from pathlib import Path
 
 import pandas as pd
@@ -43,21 +42,6 @@ df_show_genre = pd.DataFrame(
 )
 
 
-@pytest.fixture
-def db_conn() -> Iterator[sqlite3.Connection]:
-    conn = sqlite3.connect(":memory:")
-    yield conn
-    conn.close()
-
-
-@pytest.fixture
-def setup_silver_data(tmp_path: Path) -> Path:
-    df_shows.to_parquet(tmp_path / "shows.parquet", index=False)
-    df_show_genre.to_parquet(tmp_path / "show_genre.parquet", index=False)
-
-    return tmp_path
-
-
 def test_load_silver_to_sqlite_table_exists(
     setup_silver_data: Path, db_conn: sqlite3.Connection
 ) -> None:
@@ -80,8 +64,8 @@ def test_load_silver_to_sqlite_count_rows(
 
     shows_count = db_conn.execute("select count(*) from silver_shows").fetchone()[0]
     show_genre_count = db_conn.execute("select count(*) from silver_show_genre").fetchone()[0]
-    assert shows_count == 3
-    assert show_genre_count == 4
+    assert shows_count == 4
+    assert show_genre_count == 5
 
 
 def test_load_silver_to_sqlite_cyrillic(
@@ -112,10 +96,10 @@ def test_load_silver_to_sqlite_idempotency(
     load_silver_to_sqlite(silver_root=setup_silver_data, conn=db_conn)
 
     shows_count = db_conn.execute("SELECT COUNT(*) FROM silver_shows").fetchone()[0]
-    assert shows_count == 3
+    assert shows_count == 4
 
     show_genre_count = db_conn.execute("select count(*) from silver_show_genre").fetchone()[0]
-    assert show_genre_count == 4
+    assert show_genre_count == 5
 
 
 def test_load_silver_to_sqlite_missing_file(tmp_path: Path, db_conn: sqlite3.Connection) -> None:
