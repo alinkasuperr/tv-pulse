@@ -37,7 +37,7 @@ df_shows = pd.DataFrame(
             "runtime_min": 180,
             "rating_avg": None,
             "network_name": None,
-            "network_country": "Ukraine",
+            "network_country": None,
             "weight": 230,
             "type": "Scripted",
             "language": "Polish",
@@ -64,7 +64,7 @@ df_shows = pd.DataFrame(
             "url": "https://tvmaze.com",
             "average_runtime_min": 60,
             "updated_at": pd.Timestamp("2023-11-14 22:13:20"),
-            "imdb_id": "tt1553636",
+            "imdb_id": None,
         },
         {
             "show_id": 4,
