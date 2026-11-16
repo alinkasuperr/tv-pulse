@@ -182,3 +182,60 @@ def test_gold_sql_idempotency(gold_conn: sqlite3.Connection) -> None:
     )
 
     assert after == before
+
+
+def test_bridge_show_genre_count_rows(gold_conn: sqlite3.Connection) -> None:
+    bridge_show_rows = gold_conn.execute("select count(*) from bridge_show_genre").fetchone()[0]
+    silver_show_rows = gold_conn.execute("select count(*) from silver_show_genre").fetchone()[0]
+
+    assert bridge_show_rows == silver_show_rows
+
+
+def test_bridge_show_skips_shows_without_genres(gold_conn: sqlite3.Connection) -> None:
+    res = gold_conn.execute(
+        "select count(*) from bridge_show_genre b join dim_show s on s.show_key = b.show_key"
+        " where s.show_id = 3"
+    ).fetchone()[0]
+
+    assert res == 0
+
+
+def test_bridge_show_genre_duplicates(gold_conn: sqlite3.Connection) -> None:
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+        gold_conn.execute("insert into bridge_show_genre (show_key, genre_key) values (1, 2)")
+
+
+@pytest.mark.parametrize(
+    ("show_key", "genre_key"),
+    [
+        (999, 1),
+        (1, 999),
+    ],
+    ids=["missing_show_key", "missing_genre_key"],
+)
+def test_bridge_show_genre_foreign_key(
+    gold_conn: sqlite3.Connection, show_key: int, genre_key: int
+) -> None:
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        gold_conn.execute(
+            "insert into bridge_show_genre (show_key, genre_key) values (?, ?)",
+            (show_key, genre_key),
+        )
+
+
+@pytest.mark.parametrize(
+    ("show_key", "genre_key"),
+    [
+        (None, 1),
+        (1, None),
+    ],
+    ids=["null_show_key", "null_genre_key"],
+)
+def test_bridge_show_genre_not_null_constraint(
+    gold_conn: sqlite3.Connection, show_key: int | None, genre_key: int | None
+) -> None:
+    with pytest.raises(sqlite3.IntegrityError, match="NOT NULL"):
+        gold_conn.execute(
+            "insert into bridge_show_genre (show_key, genre_key) values (?, ?)",
+            (show_key, genre_key),
+        )
