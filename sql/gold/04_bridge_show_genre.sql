@@ -1,7 +1,7 @@
 create table bridge_show_genre(
-show_key integer not null references dim_show(show_key),
-genre_key integer not null references dim_genre(genre_key),
-primary key(show_key, genre_key)
+    show_key integer not null references dim_show(show_key),
+    genre_key integer not null references dim_genre(genre_key),
+    primary key(show_key, genre_key)
 );
 
 -- Per-genre sums and averages are safe via the bridge, as each show appears once per genre.

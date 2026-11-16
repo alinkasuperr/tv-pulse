@@ -239,3 +239,85 @@ def test_bridge_show_genre_not_null_constraint(
             "insert into bridge_show_genre (show_key, genre_key) values (?, ?)",
             (show_key, genre_key),
         )
+
+
+def test_fact_show_snapshot_count_rows(gold_conn: sqlite3.Connection) -> None:
+    rows = gold_conn.execute("select count(*) from fact_show_snapshot").fetchone()[0]
+    series = gold_conn.execute("select count(*) from silver_shows").fetchone()[0]
+
+    assert rows == series
+
+
+def test_fact_show_snapshot_duplicates(gold_conn: sqlite3.Connection) -> None:
+    with pytest.raises(sqlite3.IntegrityError, match="UNIQUE"):
+        gold_conn.execute(
+            "insert into fact_show_snapshot (show_key, snapshot_date_key, "
+            "premiered_date_key, ended_date_key) values (1, 20261028, -1, -1)"
+        )
+
+
+def test_fact_show_snapshot_date_keys(gold_conn: sqlite3.Connection) -> None:
+    ended_key = gold_conn.execute(
+        "select ended_date_key from fact_show_snapshot f join dim_show s"
+        " on f.show_key = s.show_key where s.show_id = 2"
+    ).fetchone()[0]
+    premiered_key = gold_conn.execute(
+        "select premiered_date_key from fact_show_snapshot f join dim_show s "
+        "on f.show_key = s.show_key where s.show_id = 4"
+    ).fetchone()[0]
+
+    assert ended_key == -1
+    assert premiered_key == -1
+
+
+def test_fact_show_snapshot_absence_of_rating(gold_conn: sqlite3.Connection) -> None:
+    res = gold_conn.execute(
+        "select rating_avg from fact_show_snapshot f join dim_show s "
+        "on f.show_key = s.show_key where s.show_id = 2"
+    ).fetchone()[0]
+
+    assert res is None
+
+
+def test_fact_show_snapshot_equal_key(gold_conn: sqlite3.Connection) -> None:
+    snapshot_date_key = gold_conn.execute(
+        "select snapshot_date_key from fact_show_snapshot f join dim_show s "
+        "on f.show_key = s.show_key where s.show_id = 1"
+    ).fetchone()[0]
+
+    assert snapshot_date_key == 20261028
+
+
+def test_fact_show_snapshot_measures_match_silver(gold_conn: sqlite3.Connection) -> None:
+    fact_measures = gold_conn.execute(
+        "select rating_avg, weight, runtime_min, average_runtime_min from fact_show_snapshot "
+        "join dim_show on dim_show.show_key = fact_show_snapshot.show_key where show_id = 1"
+    ).fetchone()
+    silver_measures = gold_conn.execute(
+        "select rating_avg, weight, runtime_min, average_runtime_min "
+        "from silver_shows where show_id = 1"
+    ).fetchone()
+
+    assert fact_measures == silver_measures
+
+
+def test_fact_show_snapshot_invalid_date_fk(gold_conn: sqlite3.Connection) -> None:
+    with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        gold_conn.execute(
+            "insert into fact_show_snapshot (show_key, snapshot_date_key, "
+            "premiered_date_key, ended_date_key) values (1, 19000101, -1, -1)"
+        )
+
+
+def test_fact_show_snapshot_role_playing_dates(gold_conn: sqlite3.Connection) -> None:
+    row = gold_conn.execute(
+        "select d_snap.full_date, d_prem.full_date, d_end.full_date "
+        "from fact_show_snapshot f "
+        "join dim_show s on f.show_key = s.show_key "
+        "join dim_date d_snap on f.snapshot_date_key = d_snap.date_key "
+        "join dim_date d_prem on f.premiered_date_key = d_prem.date_key "
+        "join dim_date d_end on f.ended_date_key = d_end.date_key "
+        "where s.show_id = 1"
+    ).fetchone()
+
+    assert row == ("2026-10-28", "2016-07-15", "2022-03-11")
