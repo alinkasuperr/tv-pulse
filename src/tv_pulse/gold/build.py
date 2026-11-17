@@ -4,7 +4,7 @@ from contextlib import closing
 from pathlib import Path
 
 from tv_pulse.gold.load import load_silver_to_sqlite
-from tv_pulse.gold.sql_runner import run_sql_files
+from tv_pulse.gold.sql_runner import run_quality_checks, run_sql_files
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,12 @@ def main() -> None:
 
     silver_root = Path("data") / "silver"
 
+    checks_dir = Path("sql") / "checks"
+
     with closing(sqlite3.connect(file_path)) as conn:
         load_silver_to_sqlite(silver_root, conn)
         run_sql_files(conn, sql_dir)
+        run_quality_checks(conn, checks_dir)
 
     logger.info("Finish main")
 
