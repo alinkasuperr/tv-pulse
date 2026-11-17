@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -7,6 +8,7 @@ import pytest
 from tv_pulse.transform.shows_silver import (
     build_show_genre,
     build_shows,
+    parse_ingested_at,
     read_bronze,
     validate_silver,
     write_silver,
@@ -72,7 +74,7 @@ RAW_SHOWS = [
 
 @pytest.fixture
 def shows() -> pd.DataFrame:
-    return build_shows(RAW_SHOWS)
+    return build_shows(RAW_SHOWS, date(2026, 10, 28))
 
 
 def test_build_shows_keeps_all_rows(shows: pd.DataFrame) -> None:
@@ -107,6 +109,19 @@ def test_build_shows_converts_timestamp_correctly(shows: pd.DataFrame) -> None:
     actual_time = shows.loc[shows["show_id"] == 1, "updated_at"].item()
     expected_time = pd.Timestamp("2023-11-14 22:13:20")
     assert actual_time == expected_time
+
+
+def test_build_shows_includes_ingested_at(shows: pd.DataFrame) -> None:
+    assert "ingested_at" in shows.columns
+
+    expected_timestamp = pd.Timestamp("2026-10-28")
+    assert (shows["ingested_at"] == expected_timestamp).all()
+    assert pd.api.types.is_datetime64_any_dtype(shows["ingested_at"])
+
+
+def test_build_shows_all_data_the_same(shows: pd.DataFrame) -> None:
+    cols = ["premiered", "ended", "updated_at", "ingested_at"]
+    assert shows[cols].dtypes.nunique() == 1
 
 
 @pytest.fixture
@@ -189,12 +204,17 @@ def test_validate_silver_invalid_show_id_in_genre(
             lambda s, g: (s.rename(columns={"url": "name"}), g),
             "columns are not unique",
         ),
+        (
+            lambda s, g: (s.assign(ingested_at=s["ingested_at"].mask(s.index == 0, None)), g),
+            "ingested_at",
+        ),
     ],
     ids=[
         "missing_name",
         "rating_out_of_range",
         "duplicate_genre_pair",
         "duplicate_columns",
+        "missing_ingested_at",
     ],
 )
 def test_validate_silver_validation_errors(
@@ -232,3 +252,29 @@ def test_write_silver(shows: pd.DataFrame, show_genre: pd.DataFrame, tmp_path: P
 
     pd.testing.assert_frame_equal(imported_shows, shows)
     pd.testing.assert_frame_equal(imported_genre, show_genre)
+
+
+@pytest.mark.parametrize(
+    ("invalid_path_str", "expected_match"),
+    [
+        ("data/shows.json", "shows"),
+        ("data/ingested_at_2026-10-28.json", "ingested_at_2026-10-28"),
+        ("data/ingested_at=abc.json", "ingested_at=abc"),
+        ("data/ingested_at=2026-15-40.json", "ingested_at=2026-15-40"),
+    ],
+    ids=["no_prefix", "wrong_separator", "text_instead_of_date", "invalid_calendar_date"],
+)
+def test_parse_ingested_at_invalid_path(invalid_path_str: str, expected_match: str) -> None:
+    invalid_path = Path(invalid_path_str)
+    with pytest.raises(ValueError, match=expected_match):
+        parse_ingested_at(invalid_path)
+
+
+def test_parse_ingested_at() -> None:
+    valid_path = Path("data/bronze/shows/page=0/ingested_at=2026-10-28.json")
+    expected_date = date(2026, 10, 28)
+
+    result = parse_ingested_at(valid_path)
+
+    assert result == expected_date
+    assert isinstance(result, date)

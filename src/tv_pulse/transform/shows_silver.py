@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,7 @@ def read_bronze(path: Path) -> list[dict[str, Any]]:
     return raw
 
 
-def build_shows(raw: list[dict[str, Any]]) -> pd.DataFrame:
+def build_shows(raw: list[dict[str, Any]], ingested_at: date) -> pd.DataFrame:
     logger.info("Start building shows: %s", len(raw))
     shows = pd.json_normalize(raw)
 
@@ -56,19 +57,21 @@ def build_shows(raw: list[dict[str, Any]]) -> pd.DataFrame:
     )
 
     cols_to_convert = {
-        "show_id": "Int64",
-        "weight": "Int64",
+        "show_id": "int64",
+        "weight": "int64",
         "language": "category",
         "runtime_min": "Int64",
         "type": "category",
         "status": "category",
     }
+
     shows = shows.astype(cols_to_convert)
 
     cols_to_convert_date = ["premiered", "ended"]
     shows[cols_to_convert_date] = shows[cols_to_convert_date].apply(
         pd.to_datetime, errors="coerce"
     )
+    shows["ingested_at"] = pd.Timestamp(ingested_at).as_unit("us")
 
     shows["updated_at"] = pd.to_datetime(shows["updated_at"], unit="s", errors="coerce")
     shows["updated_at"] = shows["updated_at"].astype("datetime64[us]")
@@ -110,6 +113,8 @@ def validate_silver(shows: pd.DataFrame, show_genre: pd.DataFrame, expected_rows
         raise ValueError(f"Issues: Expected {expected_rows} rows, but got {len(shows)}")
     if not shows["name"].notna().all():
         raise ValueError("Column 'name' contains missing (NaN) values")
+    if not shows["ingested_at"].notna().all():
+        raise ValueError("Column 'ingested_at' contains missing (NaN) values")
     if not shows["rating_avg"].dropna().between(0, 10).all():
         raise ValueError("Ratings out of range [0, 10] found")
     if show_genre.duplicated(subset=["show_id", "genre"]).sum() != 0:
@@ -134,6 +139,19 @@ def write_silver(shows: pd.DataFrame, show_genre: pd.DataFrame, silver_root: Pat
     logger.info("Finish writing silver shows")
 
 
+def parse_ingested_at(path: Path) -> date:
+    file_name = path.stem
+    if not file_name.startswith("ingested_at="):
+        raise ValueError(f"Incorrect file name: {file_name}")
+
+    date_str = file_name.removeprefix("ingested_at=")
+
+    try:
+        return date.fromisoformat(date_str)
+    except ValueError as err:
+        raise ValueError(f"Incorrect date format in file name: {file_name}") from err
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logger.info("Starting main")
@@ -145,11 +163,12 @@ def main() -> None:
             f"No JSON files found in {bronze_root} matching 'ingested_at=*.json'"
         )
     path = files[-1]
+    ingested_at = parse_ingested_at(path)
 
     silver_root = Path("data") / "silver"
     raw = read_bronze(path)
     expected_rows = len(raw)
-    shows = build_shows(raw)
+    shows = build_shows(raw, ingested_at)
     show_genre = build_show_genre(raw)
     validate_silver(shows, show_genre, expected_rows)
     write_silver(shows, show_genre, silver_root)
