@@ -7,6 +7,8 @@ import pytest
 
 from tv_pulse.gold.sql_runner import run_sql_files
 
+GoldDbFactory = Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection]
+
 marts_shows = pd.DataFrame(
     [
         {
@@ -207,6 +209,7 @@ marts_genre = pd.DataFrame(
         {"show_id": 1, "genre": "Drama"},
         {"show_id": 1, "genre": "Sci-Fi"},
         {"show_id": 2, "genre": "Documentary"},
+        {"show_id": 2, "genre": "Sci-Fi"},
         {"show_id": 4, "genre": "Comedy"},
         {"show_id": 4, "genre": "Horror"},
         {"show_id": 5, "genre": "Action"},
@@ -239,22 +242,18 @@ def make_gold_db(
     return _build
 
 
-def test_marts_factory_builds_gold(
-    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
-) -> None:
+def test_marts_factory_builds_gold(make_gold_db: GoldDbFactory) -> None:
     conn = make_gold_db(marts_shows, marts_genre)
     res = conn.execute("select count(*) from fact_show_snapshot").fetchone()[0]
 
     assert res == 10
 
 
-def test_top_shows_by_genre_known_ranking(
-    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
-) -> None:
+def test_top_shows_by_genre_known_ranking(make_gold_db: GoldDbFactory) -> None:
     conn = make_gold_db(marts_shows, marts_genre)
     res = conn.execute(
-        "select name, rating_avg, top_shows from mart_top_shows_by_genre "
-        "where genre= 'Horror' order by top_shows"
+        "select name, rating_avg, rank_in_genre from mart_top_shows_by_genre "
+        "where genre= 'Horror' order by rank_in_genre"
     ).fetchall()
 
     assert res == [
@@ -264,9 +263,7 @@ def test_top_shows_by_genre_known_ranking(
     ]
 
 
-def test_top_shows_by_genre_excludes_null_rating(
-    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
-) -> None:
+def test_top_shows_by_genre_excludes_null_rating(make_gold_db: GoldDbFactory) -> None:
     conn = make_gold_db(marts_shows, marts_genre)
     res = conn.execute(
         "select count(*) from mart_top_shows_by_genre where show_id = 2"
@@ -275,18 +272,50 @@ def test_top_shows_by_genre_excludes_null_rating(
     assert res == 0
 
 
-def test_top_shows_by_genre_idempotency(
-    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
-) -> None:
+def test_top_shows_by_genre_idempotency(make_gold_db: GoldDbFactory) -> None:
     conn = make_gold_db(marts_shows, marts_genre)
     marts_dir = Path(__file__).resolve().parents[1] / "sql" / "marts"
+    before = conn.execute("select count(*) from mart_top_shows_by_genre").fetchone()
 
     run_sql_files(conn, marts_dir)
     run_sql_files(conn, marts_dir)
+
+    after = conn.execute("select count(*) from mart_top_shows_by_genre").fetchone()
+
+    assert before == after
+
+
+def test_top_shows_by_genre_tie_breaker(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute(
+        "select name, rank_in_genre from mart_top_shows_by_genre "
+        'where genre="Fantasy" order by rank_in_genre'
+    ).fetchall()
+
+    assert res == [("Dark8", 1), ("Dark9", 2)]
+
+
+def test_top_shows_by_genre_fewer_than_three(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute(
+        "select name, rank_in_genre from mart_top_shows_by_genre "
+        'where genre="Comedy" order by rank_in_genre'
+    ).fetchall()
+
+    assert res == [("Dark6", 1), ("Dark2", 2)]
+
+
+def test_top_shows_by_genre_excludes_genreless_show(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute(
+        "select count(*) from mart_top_shows_by_genre where show_id = 3"
+    ).fetchone()[0]
+
+    assert res == 0
 
 
 def test_genre_vs_overall_overall_avg_ignores_genre_duplication(
-    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
+    make_gold_db: GoldDbFactory,
 ) -> None:
     conn = make_gold_db(marts_shows, marts_genre)
     res = conn.execute("select overall_avg from mart_genre_vs_overall").fetchone()[0]
@@ -294,9 +323,7 @@ def test_genre_vs_overall_overall_avg_ignores_genre_duplication(
     assert res == 5.78
 
 
-def test_genre_vs_overall_for_genre(
-    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
-) -> None:
+def test_genre_vs_overall_for_genre(make_gold_db: GoldDbFactory) -> None:
     conn = make_gold_db(marts_shows, marts_genre)
     res_avg = conn.execute(
         'select overall_avg, genre_avg, diff_avg from mart_genre_vs_overall where genre="Fantasy"'
@@ -309,9 +336,7 @@ def test_genre_vs_overall_for_genre(
     assert res_genre == 2
 
 
-def test_genre_vs_overall_null_genre(
-    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
-) -> None:
+def test_genre_vs_overall_null_genre(make_gold_db: GoldDbFactory) -> None:
     conn = make_gold_db(marts_shows, marts_genre)
     res = conn.execute(
         "select genre from mart_genre_vs_overall where genre='Documentary'"
@@ -320,9 +345,7 @@ def test_genre_vs_overall_null_genre(
     assert res is None
 
 
-def test_genre_vs_overall_ignores_null_rating(
-    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
-) -> None:
+def test_genre_vs_overall_ignores_null_rating(make_gold_db: GoldDbFactory) -> None:
     conn = make_gold_db(marts_shows, marts_genre)
     res = conn.execute(
         'select genre_avg, shows_count from mart_genre_vs_overall where genre="Sci-Fi" '
@@ -331,9 +354,7 @@ def test_genre_vs_overall_ignores_null_rating(
     assert res == [(5.8, 1)]
 
 
-def test_genre_vs_overall_count_and_sorting(
-    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
-) -> None:
+def test_genre_vs_overall_count_and_sorting(make_gold_db: GoldDbFactory) -> None:
     conn = make_gold_db(marts_shows, marts_genre)
     res = conn.execute(
         "select genre, shows_count from mart_genre_vs_overall order by genre_avg desc"
