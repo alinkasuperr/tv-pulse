@@ -19,15 +19,15 @@ def main() -> None:
     dir_path.mkdir(parents=True, exist_ok=True)
 
     sql_dir = Path("sql") / "gold"
-
     silver_root = Path("data") / "silver"
-
     checks_dir = Path("sql") / "checks"
+    marts_dir = Path("sql") / "marts"
 
     with closing(sqlite3.connect(file_path)) as conn:
         load_silver_to_sqlite(silver_root, conn)
         run_sql_files(conn, sql_dir)
         run_quality_checks(conn, checks_dir)
+        run_sql_files(conn, marts_dir)
 
     logger.info("Finish main")
 

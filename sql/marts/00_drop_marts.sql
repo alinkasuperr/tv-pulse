@@ -1,0 +1,1 @@
+--Marts view initialization
