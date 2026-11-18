@@ -246,3 +246,40 @@ def test_marts_factory_builds_gold(
     res = conn.execute("select count(*) from fact_show_snapshot").fetchone()[0]
 
     assert res == 10
+
+
+def test_top_shows_by_genre_known_ranking(
+    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
+) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute(
+        "select name, rating_avg, top_shows from mart_top_shows_by_genre "
+        "where genre= 'Horror' order by top_shows"
+    ).fetchall()
+
+    assert res == [
+        ("Dark9", 9.0, 1),
+        ("Dark7", 6.5, 2),
+        ("Dark10", 3.2, 3),
+    ]
+
+
+def test_top_shows_by_genre_excludes_null_rating(
+    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
+) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute(
+        "select count(*) from mart_top_shows_by_genre where show_id = 2"
+    ).fetchone()[0]
+
+    assert res == 0
+
+
+def test_top_shows_by_genre_idempotency(
+    make_gold_db: Callable[[pd.DataFrame, pd.DataFrame], sqlite3.Connection],
+) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    marts_dir = Path(__file__).resolve().parents[1] / "sql" / "marts"
+
+    run_sql_files(conn, marts_dir)
+    run_sql_files(conn, marts_dir)
