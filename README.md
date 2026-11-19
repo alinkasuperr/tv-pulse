@@ -18,7 +18,7 @@ Bronze (JSON) -> Silver (Parquet) -> Gold (SQLite, star schema)
 
 - Bronze (JSON) - the first layer. Raw data from the API is saved here unchanged in JSON format, so it can always be reprocessed without new requests
 - Silver (Parquet) - the middle layer with all transformation functions: renaming, types, cleaning and validation. In the end the data is saved in Parquet format
-- Gold (SQLite) - the last layer with a star schema and data quality checks. Analytical marts with window functions are planned next
+- Gold (SQLite) - the last layer with a star schema and data quality checks. Analytical marts with window functions built on top of the star schema
 
 _Tables of gold (and their grain):_
 
@@ -27,6 +27,14 @@ _Tables of gold (and their grain):_
 - dim_date - a calendar with every day between the earliest and the latest date (premiered, ended, ingested), plus -1 for unknown dates (grain: one row per calendar day)
 - bridge_show_genre - a bridge n:m linking shows and genres (grain: one row per show and genre pair)
 - fact_show_snapshot - measures of shows (rating, weight, runtime) (grain: one row per show per ingestion snapshot date)
+
+### Description about SQL marts
+Marts are SQL views built on top of the star schema (`sql/marts/`). They answer simple analytical questions about the real data and are rebuilt together with Gold by `python -m tv_pulse.gold.build`.
+1. top_shows_by_genre - the first mart with the window function row_number, which gives the top three shows inside every genre by rating (ties are broken by title)
+2. genre_vs_overall - compares the average rating of every genre with the overall average. The overall average is taken from the fact table directly, not through the bridge, otherwise multi-genre shows would be counted several times
+3. yearly_trend - average rating by premiere year: lag shows the previous year with data and the change, and a 3-year rolling average (range frame) is calculated for every year
+4. show_vs_network - compares every show rating with the average rating of its network (shows without a network and networks with a single show are excluded)
+5. rating_quartiles - the final mart divides all rated shows into four groups by ntile (quartile 1 has the highest ratings, groups can differ by one show)
 
 ### Helpful commands to execute the pipeline and tests
 Run all commands from the project root. The first pipeline command needs internet access, because it calls the TVmaze API. The `data/` folder is not stored in the repository.
@@ -43,6 +51,7 @@ Run all commands from the project root. The first pipeline command needs interne
 - File paths in the pipeline are relative to the project root
 - Fetching from the API and the `main` functions are not covered by tests yet
 - Explicit SQL integrity checks are kept even though SQLite enforces foreign keys when enabled, as preparation for cloud data warehouses (Redshift, BigQuery, Snowflake) where foreign keys are not enforced
+- Marts expect a single snapshot date; a filter for the latest snapshot is needed when several ingestions appear
 
 ### Source of data
 Data provided by [TvmazeAPI](https://www.tvmaze.com/api), licensed under CC BY-SA 4.0
