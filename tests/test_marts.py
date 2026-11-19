@@ -455,3 +455,44 @@ def test_show_vs_network_count(make_gold_db: GoldDbFactory) -> None:
     ).fetchall()
 
     assert res == [("HBO", 3), ("starlink", 2)]
+
+
+def test_rating_quartiles_known_values(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute(
+        "select name, rating_quartile from mart_rating_quartiles "
+        "where name in ('Dark8', 'Dark9', 'Dark5') order by name"
+    ).fetchall()
+
+    assert res == [("Dark5", 4), ("Dark8", 1), ("Dark9", 1)]
+
+
+def test_rating_quartiles_uneven_distribution(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute(
+        "select rating_quartile, count(*) from mart_rating_quartiles "
+        "group by rating_quartile order by rating_quartile asc"
+    ).fetchall()
+
+    assert res == [(1, 3), (2, 2), (3, 2), (4, 2)]
+
+
+def test_rating_quartiles_excludes_null_rating(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res_count = conn.execute("select count(*) from mart_rating_quartiles").fetchone()[0]
+    res_id = conn.execute(
+        "select count(*) from mart_rating_quartiles where show_id = 2"
+    ).fetchone()[0]
+
+    assert res_count == 9
+    assert res_id == 0
+
+
+def test_rating_quartiles_splits_tied_rating(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute(
+        "select name, rating_quartile from mart_rating_quartiles "
+        'where name in ("Dark2", "Dark10") order by show_id'
+    ).fetchall()
+
+    assert res == [("Dark2", 3), ("Dark10", 4)]
