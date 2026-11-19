@@ -365,3 +365,54 @@ def test_genre_vs_overall_count_and_sorting(make_gold_db: GoldDbFactory) -> None
 
     counts = dict(res)
     assert counts["Horror"] == 5
+
+
+def test_yearly_trend_known_values_and_lag_gap(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res_prev = conn.execute(
+        "select prev_year from mart_yearly_trend where year=2016 or year=2019 order by year"
+    ).fetchall()
+    res_rolling = conn.execute(
+        "select rolling_avg from mart_yearly_trend where year=2021"
+    ).fetchone()[0]
+
+    assert res_prev == [(None,), (2017,)]
+    assert res_rolling == 4.7
+
+
+def test_yearly_trend_range_frame_skips_empty_years(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res_2024_rolling = conn.execute(
+        "select rolling_avg from mart_yearly_trend where year=2024"
+    ).fetchone()[0]
+    res_2024_diff = conn.execute(
+        "select diff_year_rating from mart_yearly_trend where year=2024"
+    ).fetchone()[0]
+    res_2019 = conn.execute(
+        "select rolling_avg from mart_yearly_trend where year=2019"
+    ).fetchone()[0]
+    res_2016 = conn.execute(
+        "select diff_year_rating from mart_yearly_trend where year=2016"
+    ).fetchone()[0]
+
+    assert res_2024_rolling == 7.07
+    assert res_2024_diff == 6.07
+    assert res_2019 == 7.15
+    assert res_2016 is None
+
+
+def test_yearly_trend_excludes_unknown_dates_and_nulls(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute("select sum(shows_count) from mart_yearly_trend").fetchone()[0]
+
+    assert res == 8
+
+
+def test_yearly_trend_weighted_rolling_avg(make_gold_db: GoldDbFactory) -> None:
+    custom_shows = marts_shows.copy()
+    custom_shows.loc[custom_shows["show_id"] == 5, "premiered"] = pd.Timestamp("2023-04-11")
+
+    conn = make_gold_db(custom_shows, marts_genre)
+    res = conn.execute("select rolling_avg from mart_yearly_trend where year=2024").fetchone()[0]
+
+    assert res == 5.55
