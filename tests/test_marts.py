@@ -416,3 +416,42 @@ def test_yearly_trend_weighted_rolling_avg(make_gold_db: GoldDbFactory) -> None:
     res = conn.execute("select rolling_avg from mart_yearly_trend where year=2024").fetchone()[0]
 
     assert res == 5.55
+
+
+def test_show_vs_network_known_values(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute(
+        "select rating_avg, rating_by_network, diff_from_network from mart_show_vs_network "
+        'where name="Stranger Things"'
+    ).fetchall()
+
+    assert res == [(5.8, 3.33, 2.47)]
+
+
+def test_show_vs_network_excludes_singles_and_unknown(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute(
+        "select distinct network_name from mart_show_vs_network order by network_name"
+    ).fetchall()
+
+    assert res == [("HBO",), ("kyivstar",), ("starlink",)]
+
+    custom_shows = marts_shows.copy()
+    custom_shows.loc[custom_shows["show_id"] == 10, "network_name"] = None
+
+    conn = make_gold_db(custom_shows, marts_genre)
+    res = conn.execute(
+        "select distinct network_name from mart_show_vs_network order by network_name"
+    ).fetchall()
+
+    assert res == [("HBO",), ("kyivstar",)]
+
+
+def test_show_vs_network_count(make_gold_db: GoldDbFactory) -> None:
+    conn = make_gold_db(marts_shows, marts_genre)
+    res = conn.execute(
+        "select distinct network_name, network_shows_count from mart_show_vs_network "
+        'where network_name in ("HBO", "starlink") order by network_name'
+    ).fetchall()
+
+    assert res == [("HBO", 3), ("starlink", 2)]
