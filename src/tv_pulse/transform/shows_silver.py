@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from tv_pulse.config import BRONZE_DIR, SILVER_DIR
+
 logger = logging.getLogger(__name__)
 
 
@@ -156,22 +158,20 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logger.info("Starting main")
 
-    bronze_root = Path("data") / "bronze" / "shows" / "page=0"
-    files = sorted(bronze_root.glob("ingested_at=*.json"))
+    page_dir = BRONZE_DIR / "shows" / "page=0"
+    files = sorted(page_dir.glob("ingested_at=*.json"))
     if len(files) == 0:
-        raise FileNotFoundError(
-            f"No JSON files found in {bronze_root} matching 'ingested_at=*.json'"
-        )
+        raise FileNotFoundError(f"No JSON files found in {page_dir} matching 'ingested_at=*.json'")
+
     path = files[-1]
     ingested_at = parse_ingested_at(path)
 
-    silver_root = Path("data") / "silver"
     raw = read_bronze(path)
     expected_rows = len(raw)
     shows = build_shows(raw, ingested_at)
     show_genre = build_show_genre(raw)
     validate_silver(shows, show_genre, expected_rows)
-    write_silver(shows, show_genre, silver_root)
+    write_silver(shows, show_genre, SILVER_DIR)
 
     logger.info("Pipeline executed successfully")
 

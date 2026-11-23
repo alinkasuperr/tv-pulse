@@ -6,13 +6,15 @@ from typing import Any
 
 import requests
 
+from tv_pulse.config import BASE_URL, BRONZE_DIR, REQUEST_TIMEOUT
+
 logger = logging.getLogger(__name__)
-BASE_URL = "https://api.tvmaze.com"
 
 
 def get_page(page: int) -> list[dict[str, Any]]:
     logger.info("Starting to fetch show page: %s", page)
-    response = requests.get(f"{BASE_URL}/shows?page={page}", timeout=10)
+    response = requests.get(f"{BASE_URL}/shows?page={page}", timeout=REQUEST_TIMEOUT)
+    response.raise_for_status()
     data = response.json()
     logger.info(
         "Successfully fetched page %s. Status: %s. Received %s shows.",
@@ -39,9 +41,8 @@ def main() -> None:
     logger.info("Loading page start")
 
     current_date = date.today()
-    root_folder = Path("data") / "bronze"
     show = get_page(0)
-    saved_path = save_page(data=show, page=0, ingested_at=current_date, bronze_root=root_folder)
+    saved_path = save_page(data=show, page=0, ingested_at=current_date, bronze_root=BRONZE_DIR)
     logger.info("Pipeline executed successfully. Output saved to: %s", saved_path)
 
 
