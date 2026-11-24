@@ -2,6 +2,7 @@ from pathlib import Path
 
 # Assumes an editable install (pip install -e .), where __file__ resolves inside src/
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+USER_AGENT = "https://github.com/alinkasuperr/tv-pulse"
 
 DATA_DIR = PROJECT_ROOT / "data"
 BRONZE_DIR = DATA_DIR / "bronze"
