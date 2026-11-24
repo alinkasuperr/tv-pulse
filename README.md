@@ -45,13 +45,21 @@ Run all commands from the project root. The first pipeline command needs interne
 3. python -m tv_pulse.gold.build
 4. pytest -v
 
+### Pagination and configs
+Added a single `config.py` module to keep all project paths and API settings in one place instead of hardcoded values:
+
+- Paths are calculated from the project root, so the pipeline works from any folder
+- All configured pages of the TVmaze API are loaded and transformed (controlled by `MAX_PAGES`), with a pause between requests
+- Silver reads all pages of the latest ingestion date and stops if a page is missing
+- API fetching and pagination are covered by tests
+
 ### Limitations
-- Only the first page of the TVmaze API is loaded and transformed for now
-- Silver and Gold are built from the latest Bronze file only, so the fact table has one snapshot date for now
-- File paths in the pipeline are relative to the project root
-- Fetching from the API and the `main` functions are not covered by tests yet
-- Explicit SQL integrity checks are kept even though SQLite enforces foreign keys when enabled, as preparation for cloud data warehouses (Redshift, BigQuery, Snowflake) where foreign keys are not enforced
+- Silver and Gold are built from the latest Bronze ingestion date only, so the fact table has one snapshot date for now
 - Marts expect a single snapshot date; a filter for the latest snapshot is needed when several ingestions appear
+- Requests to the API are not retried yet after an error (429 or 5xx), a failed run has to be started again
+- Leftover pages of an earlier run on the same date can be mixed into Silver (a success marker file is planned)
+- The `main` functions are not covered by tests
+- Explicit SQL integrity checks are kept even though SQLite enforces foreign keys when enabled, as preparation for cloud data warehouses (Redshift, BigQuery, Snowflake) where foreign keys are not enforced
 
 ### Source of data
 Data provided by [TvmazeAPI](https://www.tvmaze.com/api), licensed under CC BY-SA 4.0

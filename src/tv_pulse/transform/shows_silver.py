@@ -6,6 +6,8 @@ from typing import Any
 
 import pandas as pd
 
+from tv_pulse.config import BRONZE_DIR, SILVER_DIR
+
 logger = logging.getLogger(__name__)
 
 
@@ -152,26 +154,58 @@ def parse_ingested_at(path: Path) -> date:
         raise ValueError(f"Incorrect date format in file name: {file_name}") from err
 
 
+def read_latest_bronze(bronze_root: Path) -> tuple[list[dict[str, Any]], date]:
+    files = sorted((bronze_root / "shows").glob("page=*/ingested_at=*.json"))
+    if not files:
+        raise FileNotFoundError(
+            f"No JSON files found in {bronze_root / 'shows'} matching 'page=*/ingested_at=*.json'"
+        )
+
+    file_dates = {f: parse_ingested_at(f) for f in files}
+    latest_date = max(file_dates.values())
+    latest_files = [f for f, d in file_dates.items() if d == latest_date]
+
+    latest_files = sorted(
+        latest_files,
+        key=lambda f: int(f.parent.name.removeprefix("page=")),
+    )
+
+    page_numbers = [int(f.parent.name.removeprefix("page=")) for f in latest_files]
+    expected_pages = set(range(len(page_numbers)))
+    missing_pages = sorted(expected_pages - set(page_numbers))
+    if missing_pages:
+        raise ValueError(
+            f"Missing page numbers for {latest_date}: {missing_pages} "
+            f"(found pages: {page_numbers})"
+        )
+
+    # Ensure the latest snapshot contains all page directories seen across history
+    all_pages = {f.parent.name for f in files}
+    latest_pages = {f.parent.name for f in latest_files}
+    if latest_pages != all_pages:
+        raise ValueError(
+            f"Page mismatch for {latest_date}: found {sorted(latest_pages)}, "
+            f"but history has {sorted(all_pages)}. Re-run ingestion or remove old dates."
+        )
+
+    all_raw: list[dict[str, Any]] = []
+    for f in latest_files:
+        page_shows = read_bronze(f)
+        all_raw.extend(page_shows)
+
+    return all_raw, latest_date
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logger.info("Starting main")
 
-    bronze_root = Path("data") / "bronze" / "shows" / "page=0"
-    files = sorted(bronze_root.glob("ingested_at=*.json"))
-    if len(files) == 0:
-        raise FileNotFoundError(
-            f"No JSON files found in {bronze_root} matching 'ingested_at=*.json'"
-        )
-    path = files[-1]
-    ingested_at = parse_ingested_at(path)
-
-    silver_root = Path("data") / "silver"
-    raw = read_bronze(path)
+    raw, ingested_at = read_latest_bronze(BRONZE_DIR)
     expected_rows = len(raw)
     shows = build_shows(raw, ingested_at)
     show_genre = build_show_genre(raw)
     validate_silver(shows, show_genre, expected_rows)
-    write_silver(shows, show_genre, silver_root)
+    write_silver(shows, show_genre, SILVER_DIR)
 
     logger.info("Pipeline executed successfully")
 

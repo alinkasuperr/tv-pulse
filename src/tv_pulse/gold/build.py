@@ -1,8 +1,8 @@
 import logging
 import sqlite3
 from contextlib import closing
-from pathlib import Path
 
+from tv_pulse.config import CHECKS_SQL_DIR, GOLD_DB_PATH, GOLD_SQL_DIR, MARTS_SQL_DIR, SILVER_DIR
 from tv_pulse.gold.load import load_silver_to_sqlite
 from tv_pulse.gold.sql_runner import run_quality_checks, run_sql_files
 
@@ -13,21 +13,13 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logger.info("Start main")
 
-    file_path = Path("data") / "gold" / "tv_pulse.db"
+    GOLD_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    dir_path = Path("data") / "gold"
-    dir_path.mkdir(parents=True, exist_ok=True)
-
-    sql_dir = Path("sql") / "gold"
-    silver_root = Path("data") / "silver"
-    checks_dir = Path("sql") / "checks"
-    marts_dir = Path("sql") / "marts"
-
-    with closing(sqlite3.connect(file_path)) as conn:
-        load_silver_to_sqlite(silver_root, conn)
-        run_sql_files(conn, sql_dir)
-        run_quality_checks(conn, checks_dir)
-        run_sql_files(conn, marts_dir)
+    with closing(sqlite3.connect(GOLD_DB_PATH)) as conn:
+        load_silver_to_sqlite(SILVER_DIR, conn)
+        run_sql_files(conn, GOLD_SQL_DIR)
+        run_quality_checks(conn, CHECKS_SQL_DIR)
+        run_sql_files(conn, MARTS_SQL_DIR)
 
     logger.info("Finish main")
 

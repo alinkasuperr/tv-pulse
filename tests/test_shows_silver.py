@@ -1,6 +1,7 @@
 import json
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -10,6 +11,7 @@ from tv_pulse.transform.shows_silver import (
     build_shows,
     parse_ingested_at,
     read_bronze,
+    read_latest_bronze,
     validate_silver,
     write_silver,
 )
@@ -278,3 +280,74 @@ def test_parse_ingested_at() -> None:
 
     assert result == expected_date
     assert isinstance(result, date)
+
+
+def _write_json(path: Path, payload: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+
+def test_read_latest_bronze_merges_pages(tmp_path: Path) -> None:
+    _write_json(tmp_path / "shows" / "page=0" / "ingested_at=2026-01-01.json", RAW_SHOWS[:2])
+    _write_json(tmp_path / "shows" / "page=1" / "ingested_at=2026-01-01.json", RAW_SHOWS[2:])
+
+    raw, ingested_at = read_latest_bronze(tmp_path)
+
+    assert ingested_at == date(2026, 1, 1)
+    assert raw == RAW_SHOWS
+
+
+def test_read_latest_bronze_picks_latest_date(tmp_path: Path) -> None:
+    _write_json(tmp_path / "shows" / "page=0" / "ingested_at=2026-01-01.json", RAW_SHOWS[:1])
+    _write_json(tmp_path / "shows" / "page=0" / "ingested_at=2026-01-02.json", RAW_SHOWS[1:])
+
+    raw, ingested_at = read_latest_bronze(tmp_path)
+
+    assert ingested_at == date(2026, 1, 2)
+    assert raw == RAW_SHOWS[1:]
+
+
+def test_read_latest_bronze_sorts_pages_numerically(tmp_path: Path) -> None:
+    for page_num in range(12):
+        _write_json(
+            tmp_path / "shows" / f"page={page_num}" / "ingested_at=2026-01-01.json",
+            [{"id": page_num}],
+        )
+
+    raw, _ = read_latest_bronze(tmp_path)
+
+    assert [row["id"] for row in raw] == list(range(12))
+
+
+def test_read_latest_bronze_empty_dir_raises(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        read_latest_bronze(tmp_path)
+
+
+def test_read_latest_bronze_raises_on_page_gap(tmp_path: Path) -> None:
+    _write_json(tmp_path / "shows" / "page=0" / "ingested_at=2026-01-01.json", RAW_SHOWS[:1])
+    _write_json(tmp_path / "shows" / "page=2" / "ingested_at=2026-01-01.json", RAW_SHOWS[1:2])
+
+    with pytest.raises(ValueError, match=r"Missing page numbers.*\[1\]"):
+        read_latest_bronze(tmp_path)
+
+
+def test_read_latest_bronze_raises_on_incomplete_latest_date(tmp_path: Path) -> None:
+    _write_json(tmp_path / "shows" / "page=0" / "ingested_at=2026-01-01.json", RAW_SHOWS[:2])
+    _write_json(tmp_path / "shows" / "page=1" / "ingested_at=2026-01-01.json", RAW_SHOWS[2:])
+    _write_json(tmp_path / "shows" / "page=0" / "ingested_at=2026-01-02.json", RAW_SHOWS[:2])
+
+    with pytest.raises(ValueError, match="Page mismatch"):
+        read_latest_bronze(tmp_path)
+
+
+def test_validate_silver_raises_on_duplicate_id_across_pages(tmp_path: Path) -> None:
+    _write_json(tmp_path / "shows" / "page=0" / "ingested_at=2026-01-01.json", RAW_SHOWS)
+    _write_json(tmp_path / "shows" / "page=1" / "ingested_at=2026-01-01.json", RAW_SHOWS)
+
+    raw, ingested_at = read_latest_bronze(tmp_path)
+    built_shows = build_shows(raw, ingested_at)
+    built_genre = build_show_genre(raw)
+
+    with pytest.raises(ValueError, match="ID show non unique"):
+        validate_silver(built_shows, built_genre, expected_rows=len(raw))
