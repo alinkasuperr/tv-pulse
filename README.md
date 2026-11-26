@@ -51,13 +51,16 @@ Added a single `config.py` module to keep all project paths and API settings in 
 - Paths are calculated from the project root, so the pipeline works from any folder
 - All configured pages of the TVmaze API are loaded and transformed (controlled by `MAX_PAGES`), with a pause between requests
 - Silver reads all pages of the latest ingestion date and stops if a page is missing
-- API fetching and pagination are covered by tests
+- API fetching, pagination and retries are covered by tests
+
+### Retries
+A request is repeated up to `MAX_ATTEMPTS` times with a growing pause (1, 2, 4 seconds...) on HTTP 429, 5xx, timeouts and connection errors. Other errors (for example 400) stop the run at once, and a 404 means the end of the list. If all attempts fail, the run stops with a clear error. Pages saved before the failure stay in Bronze, and a rerun overwrites them with the same data.
 
 ### Limitations
 - Silver and Gold are built from the latest Bronze ingestion date only, so the fact table has one snapshot date for now
 - Marts expect a single snapshot date; a filter for the latest snapshot is needed when several ingestions appear
-- Requests to the API are not retried yet after an error (429 or 5xx), a failed run has to be started again
-- Leftover pages of an earlier run on the same date can be mixed into Silver (a success marker file is planned)
+- Planned: a manifest file written after a complete ingestion, so Silver reads only complete runs (now leftover pages of an earlier run on the same date can be mixed into Silver)
+- The `Retry-After` header and responses with an invalid JSON body are not handled
 - The `main` functions are not covered by tests
 - Explicit SQL integrity checks are kept even though SQLite enforces foreign keys when enabled, as preparation for cloud data warehouses (Redshift, BigQuery, Snowflake) where foreign keys are not enforced
 

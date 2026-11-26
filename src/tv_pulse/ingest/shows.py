@@ -12,30 +12,73 @@ import requests
 from tv_pulse.config import (
     BASE_URL,
     BRONZE_DIR,
+    MAX_ATTEMPTS,
     MAX_PAGES,
     REQUEST_PAUSE,
     REQUEST_TIMEOUT,
+    RETRY_BASE_PAUSE,
     USER_AGENT,
 )
 
 logger = logging.getLogger(__name__)
 
 
-def get_page(page: int, session: requests.Session) -> list[dict[str, Any]] | None:
+class PageFetchError(Exception):
+    def __init__(self, page: int, max_attempts: int, last_error: str) -> None:
+        self.page = page
+        self.max_retries = max_attempts
+        self.last_error = last_error
+        message = (
+            f"Failed to fetch page {page} after {max_attempts} attempts (last error: {last_error})"
+        )
+        super().__init__(message)
+
+
+def get_page(
+    page: int,
+    session: requests.Session,
+    max_attempts: int = MAX_ATTEMPTS,
+    base_pause: float = RETRY_BASE_PAUSE,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> list[dict[str, Any]] | None:
+    if max_attempts < 1:
+        raise ValueError(f"max_attempts must be at least 1, got {max_attempts}")
+
     logger.info("Starting to fetch show page: %s", page)
-    response = session.get(f"{BASE_URL}/shows?page={page}", timeout=REQUEST_TIMEOUT)
-    # 404 indicates the end of pagination and returns None
-    if response.status_code == 404:
-        return None
-    response.raise_for_status()
-    data = response.json()
-    logger.info(
-        "Successfully fetched page %s. Status: %s. Received %s shows.",
-        page,
-        response.status_code,
-        len(data),
-    )
-    return data
+    last_error = "unknown"
+
+    for attempt in range(max_attempts):
+        try:
+            response = session.get(f"{BASE_URL}/shows?page={page}", timeout=REQUEST_TIMEOUT)
+        except (requests.Timeout, requests.ConnectionError) as err:
+            last_error = str(err)
+        else:
+            if response.status_code == 404:
+                return None
+            if response.status_code == 429 or 500 <= response.status_code < 600:
+                last_error = f"HTTP {response.status_code}"
+            else:
+                response.raise_for_status()
+                data = response.json()
+                logger.info(
+                    "Successfully fetched page %s. Status: %s. Received %s shows.",
+                    page,
+                    response.status_code,
+                    len(data),
+                )
+                return data
+
+        logger.warning(
+            "Failed to fetch page %s (attempt %s/%s): %s",
+            page,
+            attempt + 1,
+            max_attempts,
+            last_error,
+        )
+        if attempt < max_attempts - 1:
+            sleep_fn(base_pause * (2**attempt))
+
+    raise PageFetchError(page=page, max_attempts=max_attempts, last_error=last_error)
 
 
 def save_page(data: list[dict[str, Any]], page: int, ingested_at: date, bronze_root: Path) -> Path:
