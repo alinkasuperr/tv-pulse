@@ -5,7 +5,7 @@ A data engineering practice project that covers three medallion layers: it extra
 - Ruff for linting and formatting
 - Mypy for type checking
 - Pytest for testing
-- Pre-commit for local checks before every commit
+- Pre-commit for checks before every commit
 - GitHub Actions for CI
 
 In addition, released under the MIT License _(see LICENSE)_
@@ -13,12 +13,43 @@ In addition, released under the MIT License _(see LICENSE)_
 ### For what
 A data pipeline that collects TV show data from TVmaze API and builds analytics-ready tables
 
+### Architecture
+
+Flowchart schema
+```mermaid
+flowchart LR
+    API([TVmaze API]) -->|JSON / ingest/shows.py| Bronze[(Bronze Layer)]
+    Bronze -->|Parquet / transform/shows_silver.py| Silver[(Silver Layer)]
+    Silver -->|SQLite / load.py + sql/gold| Gold[(Gold Layer)]
+    Gold -->|SQL views / sql/marts| Marts([Data Marts])
+```
+
+Folders tree
+```text
+tv-pulse/
+├── .github/workflows/     CI (GitHub Actions)
+├── data/                  not in git: bronze/, silver/, gold/tv_pulse.db
+├── sql/
+│   ├── gold/              star schema tables
+│   ├── checks/            data quality checks
+│   └── marts/             analytical views
+├── src/tv_pulse/
+│   ├── config.py          paths and API settings
+│   ├── ingest/            API -> Bronze
+│   ├── transform/         Bronze -> Silver
+│   └── gold/              Silver -> SQLite, SQL runner
+├── tests/
+├── .pre-commit-config.yaml
+├── pyproject.toml
+└── README.md
+```
+
 ### Schema of the pipeline
 Bronze (JSON) -> Silver (Parquet) -> Gold (SQLite, star schema)
 
-- Bronze (JSON) - the first layer. Raw data from the API is saved here unchanged in JSON format, so it can always be reprocessed without new requests
-- Silver (Parquet) - the middle layer with all transformation functions: renaming, types, cleaning and validation. In the end the data is saved in Parquet format
-- Gold (SQLite) - the last layer with a star schema and data quality checks. Analytical marts with window functions built on top of the star schema
+- Bronze - the first layer. Raw data from the API is saved here unchanged in JSON format, so it can always be reprocessed without new requests
+- Silver - the middle layer with all transformation functions: renaming, types, cleaning and validation. In the end the data is saved in Parquet format
+- Gold - the last layer with a star schema and data quality checks. Analytical marts with window functions are built on top of the star schema
 
 _Tables of gold (and their grain):_
 
@@ -29,7 +60,8 @@ _Tables of gold (and their grain):_
 - fact_show_snapshot - measures of shows (rating, weight, runtime) (grain: one row per show per ingestion snapshot date)
 
 ### Description about SQL marts
-Marts are SQL views built on top of the star schema (`sql/marts/`). They answer simple analytical questions about the real data and are rebuilt together with Gold by `python -m tv_pulse.gold.build`.
+Marts are SQL views built on top of the star schema (`sql/marts/`). They answer simple analytical questions about the real data and are rebuilt together with Gold by `python -m tv_pulse.gold.build`
+
 1. top_shows_by_genre - the first mart with the window function row_number, which gives the top three shows inside every genre by rating (ties are broken by title)
 2. genre_vs_overall - compares the average rating of every genre with the overall average. The overall average is taken from the fact table directly, not through the bridge, otherwise multi-genre shows would be counted several times
 3. yearly_trend - average rating by premiere year: lag shows the previous year with data and the change, and a 3-year rolling average (range frame) is calculated for every year
@@ -64,7 +96,33 @@ A request is repeated up to `MAX_ATTEMPTS` times with a growing pause (1, 2, 4 s
 - The `main` functions are not covered by tests
 - Explicit SQL integrity checks are kept even though SQLite enforces foreign keys when enabled, as preparation for cloud data warehouses (Redshift, BigQuery, Snowflake) where foreign keys are not enforced
 
+### Results
+Calculated on the data loaded with `MAX_PAGES = 5` (ingestion date 2026-11-27), so it is only a part of the TVmaze catalog.
+
+- Total loaded shows: 1208
+- Show-genre pairs: 2477
+- Premiere years span: 60 years
+- Shows without rating: 152
+- Overall average rating: 7.41
+- Peak premiere year by average rating: 1997 (12 rated shows, average 7.86)
+- Top-3 shows in Drama: Breaking Bad, Band of Brothers, Firefly
+
+Genres with the highest average rating (genres with at least 10 rated shows):
+
+| Genre | Rated shows | Average rating |
+|---|---|---|
+| War | 18 | 7.91 |
+| Espionage | 13 | 7.83 |
+| Medical | 25 | 7.77 |
+| Anime | 11 | 7.76 |
+
 ### Source of data
 Data provided by [TvmazeAPI](https://www.tvmaze.com/api), licensed under CC BY-SA 4.0
 
-Status: work in progress
+Status: completed v1
+
+### Next steps
+Planned updates:
+
+- Orchestrating the pipeline with Apache Airflow
+- Spark / Databricks for bigger volumes of data
